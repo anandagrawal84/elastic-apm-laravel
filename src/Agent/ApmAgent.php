@@ -43,50 +43,44 @@ class ApmAgent
 
     /**
      * ApmAgent constructor.
-     * @param string $appName
-     * @param string $appVersion
-     * @param string $token
-     * @param string $serverUrl
+     * @param array $context
      */
-    public function __construct(string $appName, string $token, string $serverUrl, Request $request = null, string $appVersion = '')
+    public function __construct(array $context = [])
     {
-        $this->appName = $appName;
-        $this->token = $token;
-        $this->serverUrl = $serverUrl;
-        $this->appVersion = $appVersion;
+        $this->appName = config('elastic-apm.app.appName');
+        $this->token = config('elastic-apm.server.secretToken');
+        $this->serverUrl = config('elastic-apm.server.serverUrl');
+        $this->appVersion = config('elastic-apm.app.appVersion');
         $config = [
-            'name' => $appName,
-            'version' => $appVersion,
-            'secretToken' => $token,
+            'name' => $this->appName,
+            'version' => $this->appVersion,
+            'secretToken' => $this->token,
             'agentName' => 'RMS',
             'agentVersion' => '1.1.0',
             'transport' => [
-                'host' => $serverUrl,
+                'host' => $this->serverUrl,
                 'config' => [
-                    'base_uri' => $serverUrl,
+                    'base_uri' => $this->serverUrl,
                 ],
                 //'method' => 'lms',
                 //'class' => Transport::class
             ],
             'framework' => [
-                'name' => 'Lumen',
-                'version' => '5.5.2',
+                'name' => config('elastic-apm.framework.name'),
+                'version' => config('elastic-apm.framework.version'),
             ],
-        ];
-        $contexts = [
-            'user' => [],
+
         ];
 
-        if (!empty($request) && !empty($request->user)) {
-            $contexts = [
-                'user' => [
-                    'id' => $request->user->email(),
-                    'username' => $request->user->username(),
-                ],
-                'tags' => [],
+        if(empty($context)) {
+            $context = [
+                'user'   => [],
+                'custom' => [],
+                'tags'   => []
             ];
         }
-        $this->agent = new Agent($config, $contexts);
+
+        $this->agent = new Agent($config, $context);
     }
 
     /**
@@ -210,7 +204,6 @@ class ApmAgent
         if(!empty($this->transaction)) {
             $this->transaction->stop();
             $this->agent->register($this->transaction);
-            $this->transaction = null;
 
             return $this->agent->send();
         }
@@ -255,6 +248,16 @@ class ApmAgent
         array_pop($this->spans);
         $span->stop();
         $this->agent->register($span);
+    }
+
+    /**
+     * Add a Span to the Transaction
+     *
+     * @param Span $span
+     */
+    public function addSpan(Span $span) : void
+    {
+        $this->spans[] = $span;
     }
 
     /**
