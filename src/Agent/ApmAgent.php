@@ -55,6 +55,7 @@ class ApmAgent
             'name' => $this->appName,
             'version' => $this->appVersion,
             'secretToken' => $this->token,
+            'environment' => config('elastic-apm.app.environment'),
             'agentName' => config('elastic-apm.app.agentName'),
             'agentVersion' => config('elastic-apm.app.agentVersion'),
             'transport' => [
