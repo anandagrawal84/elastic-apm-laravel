@@ -62,8 +62,6 @@ class ApmAgent
                 'config' => [
                     'base_uri' => $this->serverUrl,
                 ],
-                //'method' => 'lms',
-                //'class' => Transport::class
             ],
             'framework' => [
                 'name' => config('elastic-apm.framework.name'),
