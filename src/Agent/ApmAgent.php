@@ -218,6 +218,7 @@ class ApmAgent
      * @return Span
      */
     public function startTrace(string $name, string $type, ?float $startTime = null): Span
+    {
         $span = $this->agent->factory()->newSpan($name, $type);
         $span->setTransaction($this->transaction);
         $span->setParentId($this->transaction->getId());
