@@ -57,6 +57,7 @@ class ApmAgent
             'secretToken' => $this->token,
             'agentName' => config('elastic-apm.app.agentName'),
             'agentVersion' => config('elastic-apm.app.agentVersion'),
+            'active' => config('elastic-apm.active'),
             'transport' => [
                 'host' => $this->serverUrl,
                 'config' => [
