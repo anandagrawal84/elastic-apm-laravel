@@ -55,6 +55,7 @@ class ApmAgent
             'name' => $this->appName,
             'version' => $this->appVersion,
             'secretToken' => $this->token,
+            'environment' => config('elastic-apm.app.environment'),
             'agentName' => config('elastic-apm.app.agentName'),
             'agentVersion' => config('elastic-apm.app.agentVersion'),
             'active' => config('elastic-apm.active'),
@@ -63,8 +64,6 @@ class ApmAgent
                 'config' => [
                     'base_uri' => $this->serverUrl,
                 ],
-                //'method' => 'lms',
-                //'class' => Transport::class
             ],
             'framework' => [
                 'name' => config('elastic-apm.framework.name'),
@@ -214,16 +213,18 @@ class ApmAgent
      * Start a trace in specified feature with separated name and type
      * We push it to a parent stack in order to link the children traces to it's parent
      *
-     *
      * @param string $name
      * @param string $type
+     * @param float|null $startTime
+     *
      * @return Span
      */
-    public function startTrace(string $name, string $type): Span {
+    public function startTrace(string $name, string $type, ?float $startTime = null): Span
+    {
         $span = $this->agent->factory()->newSpan($name, $type);
         $span->setTransaction($this->transaction);
         $span->setParentId($this->transaction->getId());
-        $span->start();
+        $span->start($startTime);
         if (!empty($this->spans)) {
             $parentSpan = $this->spans[count($this->spans) - 1];
             $span->setParentId($parentSpan->getId());
@@ -266,7 +267,7 @@ class ApmAgent
      *
      * @return Transaction
      */
-    public function getCurrentTransaction(): Transaction {
+    public function getTransaction(): Transaction {
         return $this->transaction;
     }
 }
