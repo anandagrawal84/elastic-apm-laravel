@@ -267,7 +267,8 @@ class ApmAgent
      *
      * @return Transaction
      */
-    public function getTransaction(): Transaction {
+    public function getTransaction(): ?Transaction
+    {
         return $this->transaction;
     }
 }
