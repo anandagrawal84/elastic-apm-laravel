@@ -4,93 +4,134 @@ namespace PhilKra\ElasticApmLaravel\Agent;
 
 use Illuminate\Http\Request;
 use PhilKra\Agent;
+use PhilKra\Exception\InvalidConfigException;
+use PhilKra\Exception\Timer\AlreadyRunningException;
+use PhilKra\Exception\Timer\NotStartedException;
+use PhilKra\Traces\Context;
 use PhilKra\Traces\Error;
 use PhilKra\Traces\Span;
 use PhilKra\Traces\Stacktrace;
 use PhilKra\Traces\Transaction;
+use Throwable;
 
+/**
+ * Class ApmAgent
+ *
+ * @package App\Library
+ */
 class ApmAgent
 {
+
     /**
+     * Constant for MAX Debug Trace
+     */
+    public const MAX_DEBUG_TRACE = 10;
+
+    /**
+     * App Name
+     *
      * @var string
      */
     private $appName;
 
-    /** @var string */
-    private $appVersion;
     /**
+     * App Version
+     *
+     * @var string
+     */
+    private $appVersion;
+
+    /**
+     * APM Token
+     *
      * @var string
      */
     private $token;
+
     /**
+     * APM Server URL
+     *
      * @var string
      */
     private $serverUrl;
 
-    /** @var Transaction */
+    /**
+     * Transaction Instance
+     *
+     * @var Transaction
+     */
     private $transaction;
 
-    /** @var Agent */
+    /**
+     * Agent
+     *
+     * @var Agent
+     */
     private $agent;
 
-    /** @var Span[] */
+    /**
+     * Span Collection
+     *
+     * @var Span[]
+     */
     private $spans = [];
 
-    /** @var string */
+    /**
+     * Transaction ID
+     *
+     * @var string
+     */
     private $transactionId = '';
 
-    public const MAX_DEBUG_TRACE = 10;
-
     /**
-     * ApmAgent constructor.
-     * @param array $context
+     * ApmAgent constructor
+     *
+     * @param array $context Context
+     *
+     * @throws InvalidConfigException
+     * @throws AlreadyRunningException
      */
     public function __construct(array $context = [])
     {
-        $this->appName = config('elastic-apm.app.appName');
+        $this->appName = config('elastic-apm.app.name');
         $this->token = config('elastic-apm.server.secretToken');
         $this->serverUrl = config('elastic-apm.server.serverUrl');
-        $this->appVersion = config('elastic-apm.app.appVersion');
+        $this->appVersion = config('elastic-apm.app.version');
         $config = [
             'name' => $this->appName,
             'version' => $this->appVersion,
             'secretToken' => $this->token,
-            'environment' => config('elastic-apm.app.environment'),
-            'agentName' => config('elastic-apm.app.agentName'),
-            'agentVersion' => config('elastic-apm.app.agentVersion'),
             'active' => config('elastic-apm.active'),
+            'agentName' => config('elastic-apm.agent.name'),
+            'environment' => config('elastic-apm.app.environment'),
+            'agentVersion' => config('elastic-apm.agent.version'),
             'transport' => [
                 'host' => $this->serverUrl,
                 'config' => [
                     'base_uri' => $this->serverUrl,
                 ],
+                'timeout' => config('elastic-apm.agent.requestTimeout'),
             ],
             'framework' => [
                 'name' => config('elastic-apm.framework.name'),
                 'version' => config('elastic-apm.framework.version'),
             ],
-
+            'minimumSpanDuration' => config('elastic-apm.minimumSpanDuration'),
+            'maximumTransactionSpan' => config('elastic-apm.maximumTransactionSpan'),
         ];
-
-        if(empty($context)) {
+        if (empty($context)) {
             $context = [
                 'user'   => [],
                 'custom' => [],
                 'tags'   => []
             ];
         }
-
         $this->agent = new Agent($config, $context);
     }
 
     /**
-     * @param Agent $agent
-     */
-    public function setAgent(Agent $agent) {
-        $this->agent = $agent;
-    }
-
-    /**
+     * Returns App Name
+     *
      * @return string
      */
     public function getAppName(): string
@@ -99,14 +140,18 @@ class ApmAgent
     }
 
     /**
-     * @return string
+     * Returns APM Token
+     *
+     * @return string|null
      */
-    public function getToken(): string
+    public function getToken()
     {
         return $this->token;
     }
 
     /**
+     * Returns Server URL
+     *
      * @return string
      */
     public function getServerUrl(): string
@@ -116,46 +161,50 @@ class ApmAgent
 
     /**
      * Start new transaction
-     * Let set open trace ID if we use Open Tracing Interface. @see: https://www.elastic.co/blog/distributed-tracing-opentracing-and-elastic-apm
      *
+     * @param string $transactionName Transaction Name
+     * @param string $type            Transaction Type
+     * @param string $openTraceId     Open Trace ID
      *
-     * @param string $transactionName
-     * @param string $type
-     * @param string $openTraceId
+     * @throws AlreadyRunningException
+     *
      * @return Transaction
      */
-    public function startTransaction(string $transactionName, string $type, string $openTraceId = ''): Transaction {
+    public function startTransaction(string $transactionName, string $type, string $openTraceId = ''): Transaction
+    {
         $this->transaction = $this->agent->factory()->newTransaction($transactionName, $type);
         $this->transaction->setTraceId(empty($openTraceId) ? $this->transaction->getId() : $openTraceId);
         if (!empty($this->transactionId)) {
             $this->transaction->setId($this->transactionId);
         }
         $this->transaction->start();
-
         return $this->transaction;
     }
 
     /**
      * Allow set custom transaction ID
      *
-     * @param string $transactionId
+     * @param string $transactionId Transaction ID
+     *
+     * @return void
      */
-    public function setTransactionId(string $transactionId) {
-        //If transaction already start
-        if (!empty($this->transaction)) {
+    public function setTransactionId(string $transactionId)
+    {
+        if (null !== $this->transaction) {
             $this->transaction->setId($transactionId);
-        } else {
-            //Let keep this transaction ID until it start
-            $this->transactionId = $transactionId;
         }
+
+        $this->transactionId = $transactionId;
     }
 
     /**
+     * Get Transaction ID
+     *
      * @return string
      */
     public function getTransactionId(): string
     {
-        if (!empty($this->transaction)) {
+        if (null !== $this->transaction) {
             return $this->transaction->getId();
         }
 
@@ -163,49 +212,69 @@ class ApmAgent
     }
 
     /**
-     * @param Transaction $transaction
+     * Set Transaction
+     *
+     * @param Transaction $transaction Transaction Object
+     *
+     * @return void
      */
-    public function setTransaction(Transaction $transaction) {
+    public function setTransaction(Transaction $transaction): void
+    {
         $this->transaction = $transaction;
     }
 
     /**
+     * Get Span Collection
+     *
      * @return Span[]
      */
-    public function getSpans(): array {
+    public function getSpans(): array
+    {
         return $this->spans;
     }
 
     /**
      * Notify an exception or error which registered
-     * Some of errors/exeptions will be ignored by config in apm.skip_exceptions
+     * Some of errors/exceptions will be ignored by config in apm.skip_exceptions
      *
-     * @param \Throwable $e
-     * @return Error
+     * @param Throwable $exception Exception Object
+     *
+     * @throws NotStartedException
+     *
+     * @return void
      */
-    public function notifyException(\Throwable $e) {
-        $error = $this->agent->factory()->newError($e);
-        $error->setTransaction($this->transaction);
-        $error->setParentId($this->transaction->getId());
-        $this->agent->register($error);
+    public function notifyException(Throwable $exception): void
+    {
+        if (null !== $this->transaction) {
+            $error = $this->agent->factory()->newError($exception);
+            $error->setTransaction($this->transaction);
+            $error->setParentId($this->transaction->getId());
+            $this->agent->register($error);
+        }
     }
 
     /**
      * Stop current transaction and send all data to APM server
      *
-     * @return bool
+     * @param string|null  $result  Transaction Result
+     * @param Context|null $context Context Object
+     *
+     * @throws NotStartedException
+     *
+     * @return void
      */
-    public function stopTransaction() {
-        //Make sure all traces were stopped
+    public function stopTransaction(?string $result = null, ?Context $context = null): void
+    {
         while (!empty($this->spans)) {
             $trace = array_pop($this->spans);
             $this->stopTrace($trace);
         }
-        if(!empty($this->transaction)) {
-            $this->transaction->stop();
+        if (null !== $this->transaction) {
+            $this->transaction->stop($result);
+            $this->transaction->setContext($context);
             $this->agent->register($this->transaction);
 
-            return $this->agent->send();
+            $this->agent->send();
         }
     }
 
@@ -213,15 +282,18 @@ class ApmAgent
      * Start a trace in specified feature with separated name and type
      * We push it to a parent stack in order to link the children traces to it's parent
      *
-     * @param string $name
-     * @param string $type
-     * @param float|null $startTime
+     * @param string     $name      Trace Name
+     * @param string     $type      Trace Type
+     * @param float|null $startTime Start Time
+     * @param string     $action    Action
+     *
+     * @throws NotStartedException
      *
      * @return Span
      */
-    public function startTrace(string $name, string $type, ?float $startTime = null): Span
+    public function startTrace(string $name, string $type, ?float $startTime = null, string $action = null): Span
     {
-        $span = $this->agent->factory()->newSpan($name, $type);
+        $span = $this->agent->factory()->newSpan($name, $type, $action);
         $span->setTransaction($this->transaction);
         $span->setParentId($this->transaction->getId());
         $span->start($startTime);
@@ -229,37 +301,29 @@ class ApmAgent
             $parentSpan = $this->spans[count($this->spans) - 1];
             $span->setParentId($parentSpan->getId());
         }
-
         $traces = Error::mapStacktrace(debug_backtrace(0, self::MAX_DEBUG_TRACE));
         unset($traces[0]);
         foreach ($traces as $trace) {
             $span->addStacktrace(new Stacktrace($trace));
         }
-
         array_push($this->spans, $span);
-
         return $span;
     }
 
     /**
      * Stop current trace and remove it from parent stack
      *
-     * @param Span $span
+     * @param Span $span Span Object
+     *
+     * @throws NotStartedException
+     *
+     * @return void
      */
-    public function stopTrace(Span $span) {
+    public function stopTrace(Span $span): void
+    {
         array_pop($this->spans);
         $span->stop();
         $this->agent->register($span);
-    }
-
-    /**
-     * Add a Span to the Transaction
-     *
-     * @param Span $span
-     */
-    public function addSpan(Span $span) : void
-    {
-        $this->spans[] = $span;
     }
 
     /**
@@ -267,8 +331,9 @@ class ApmAgent
      *
      * @return Transaction
      */
-    public function getTransaction(): ?Transaction
+    public function getTransaction(): Transaction
     {
         return $this->transaction;
     }
+
 }
