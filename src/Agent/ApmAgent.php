@@ -90,6 +90,7 @@ class ApmAgent
      *
      * @throws InvalidConfigException
      * @throws AlreadyRunningException
+     * @throws NotStartedException
      */
     public function __construct(array $context = [])
     {
@@ -118,6 +119,7 @@ class ApmAgent
             ],
             'minimumSpanDuration' => config('elastic-apm.minimumSpanDuration'),
             'maximumTransactionSpan' => config('elastic-apm.maximumTransactionSpan'),
+            'sampleRate' => config('elastic-apm.sampleRate'),
         ];
         if (empty($context)) {
             $context = [
@@ -173,7 +175,7 @@ class ApmAgent
     public function startTransaction(string $transactionName, string $type, string $openTraceId = ''): Transaction
     {
         $this->transaction = $this->agent->factory()->newTransaction($transactionName, $type);
-        $this->transaction->setTraceId(empty($openTraceId) ? $this->transaction->getId() : $openTraceId);
+        $this->transaction->setTraceId(empty($openTraceId) ? $this->transaction->getTraceId() : $openTraceId);
         if (!empty($this->transactionId)) {
             $this->transaction->setId($this->transactionId);
         }
@@ -274,6 +276,7 @@ class ApmAgent
             $this->transaction->setContext($context);
             $this->agent->register($this->transaction);
 
+            $this->transaction = null;
             $this->agent->send();
         }
     }
