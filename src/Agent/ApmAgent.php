@@ -120,6 +120,7 @@ class ApmAgent
             'minimumSpanDuration' => config('elastic-apm.minimumSpanDuration'),
             'maximumTransactionSpan' => config('elastic-apm.maximumTransactionSpan'),
             'sampleRate' => config('elastic-apm.sampleRate'),
+            'enableMetrics' => config('elastic-apm.enableMetrics')
         ];
         if (empty($context)) {
             $context = [
